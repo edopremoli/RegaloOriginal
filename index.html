@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>E-commerce Lifestyle Image Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'brand-primary': '#1e40af',
+              'brand-secondary': '#1d4ed8',
+              'brand-light': '#3b82f6',
+              'brand-accent': '#60a5fa',
+              'brand-subtle': '#eff6ff',
+            }
+          }
+        }
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.22.0"
+  }
+}
+</script>
+<style>
+  :root {
+    --bg: #f8fafc; /* slate-50 */
+    --primary: #1d4ed8; /* brand-secondary */
+    --primary-foreground: #ffffff;
+    --tap: clamp(40px, 7.5vw, 52px); 
+    --icon: clamp(18px, 4vw, 24px);
+  }
+  .dark {
+      --bg: #0f172a; /* slate-900 */
+  }
+
+  .nav-steps {
+    display: flex;
+    justify-content: center;
+    background: color-mix(in oklab, var(--bg) 85%, transparent);
+    backdrop-filter: blur(6px);
+    gap: .25rem; 
+    padding: .125rem .5rem max(.125rem, env(safe-area-inset-bottom));
+  }
+
+  .btn.icon {
+    display: grid;
+    place-items: center;
+    opacity: .7;
+    touch-action: manipulation;
+    width: var(--tap);
+    height: var(--tap);
+    border-radius: 10px;
+    border: none;
+    background-color: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  
+  .btn.icon:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn.icon svg {
+    width: var(--icon);
+    height: var(--icon);
+  }
+  
+  .btn.icon[aria-current="step"] {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    opacity: 1;
+  }
+
+  .btn.icon:not(:disabled):active {
+    transform: scale(.95);
+  }
+
+  .step-progress {
+    height: 3px;
+    background: rgba(0,0,0,0.1);
+  }
+
+  .step-progress .bar {
+    height: 100%;
+    background: var(--primary);
+    transition: width .25s ease;
+  }
+  
+  @media (min-width: 768px) {
+    :root { --tap: 48px; --icon: 22px; }
+    .btn.icon { 
+      width: auto; 
+      padding: 0 .75rem; 
+      gap: .4rem; 
+      flex-direction: row;
+      display: inline-flex;
+      align-items: center;
+    }
+    .btn.icon::after { 
+      content: attr(aria-label); 
+      font-size: .8rem; 
+      font-weight: 500;
+    }
+  }
+
+  @media (max-height:700px),(max-width:360px) {
+    :root{ --tap:40px; --icon:18px; }
+    .nav-steps{ gap:.2rem; padding:0 .25rem max(0px, env(safe-area-inset-bottom)); }
+    .btn.icon{ border-radius:8px; }
+  }
+</style>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-50">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
