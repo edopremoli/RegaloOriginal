@@ -17,10 +17,42 @@ const SAFETY_SETTINGS = [
 
 // --- GLOBAL RULES CONSTANT ---
 const GLOBAL_RULES = `
-    - PRODUCT IDENTITY: Preserve the product's appearance from the reference images.
-    - PHYSICS: Ensure realistic contact shadows and perspective.
-    - LOOK: Photorealistic lifestyle photography.
-    - COMPOSITION: Center the product in the frame.
+P0 — PRODUCT IDENTITY (NON NEGOTIABLE)
+- The MASTER product images are the absolute truth.
+- Preserve exact shape, proportions, volume, cuts, seams, parts, materials, textures, logos, printed text, engravings and visible details.
+- Do not invent text, branding, labels, attachments or extra product parts.
+- Do not duplicate products unless explicitly requested.
+
+P0b — PHYSICAL REALISM
+- No floating objects.
+- Products must feel physically integrated in the scene.
+- Believable support, gravity, contact points, occlusion and contact shadows.
+- Correct perspective, scale and depth relative to the environment.
+- The product must not look pasted on top of the background.
+
+P1 — HUMAN REALISM
+- If humans appear, they must look like real people photographed in a real scene.
+- Avoid rubber/plastic skin, fake anatomy, strange fingers, stiff hands, mannequin faces, uncanny smiles or doll-like expressions.
+- Hands must interact naturally with the product if holding or wearing it.
+- If the product is wearable, it must sit naturally on the body with believable tension, folds and placement.
+
+P1b — MATERIALS AND TEXTURES
+- Materials must behave realistically: metal reflections, glass highlights, textile weave, fabric folds, wood grain, ceramic finish, etc.
+- Preserve visible textures and surface detail.
+- Avoid over-smoothing, fake plastic look or CGI rendering.
+
+P2 — LOOK AND COMPOSITION
+- Photorealistic editorial / lifestyle photography, like a real professional photographer shot.
+- Neutral, fresh, natural look by default.
+- Avoid strong orange/blue mood casts unless explicitly requested in the scene prompt.
+- Product is the protagonist, but the context must feel present, believable and desirable.
+- Context must support the product without distracting from it.
+- Keep the full product visible inside the frame with comfortable margins.
+
+P3 — OUTPUT RULES
+- Do not request or apply upscaling.
+- Do not crop important product parts.
+- Use the model’s native aspect ratio / native composition unless explicitly constrained elsewhere.
 `;
 
 const fileToBase64 = (file: File | Blob): Promise<string> => {
@@ -99,49 +131,89 @@ export const analyzeProductImage = async (productImage: File): Promise<Preflight
 };
 
 const buildIdentityBlock = (products: PreflightData[]): string => {
-    let block = "PRODUCTOS (IDENTIDAD):\n";
+    let block = "PRODUCT IDENTITY BLOCK:\n";
     products.forEach((p, idx) => {
-        block += `- PRODUCTO ${idx + 1}:\n`;
-        block += `  OBJETO: ${p.object_name_es}\n`;
+        block += `- PRODUCT ${idx + 1}:\n`;
+        block += `  OBJECT: ${p.object_name_es}\n`;
         if (p.material_finish_es) {
-            block += `  MATERIAL/ACABADO: ${p.material_finish_es}\n`;
+            block += `  MATERIAL / FINISH: ${p.material_finish_es}\n`;
         }
         const dims = [];
         if (p.alto_cm) dims.push(`alto=${p.alto_cm}cm`);
         if (p.ancho_cm) dims.push(`ancho=${p.ancho_cm}cm`);
         if (p.profundidad_cm) dims.push(`prof=${p.profundidad_cm}cm`);
         if (dims.length > 0) {
-            block += `  MEDIDAS ESTIMADAS: ${dims.join(', ')}\n`;
+            block += `  DIMENSIONS (cm): ${dims.join(', ')}\n`;
         }
     });
     return block;
 };
 
+const getHumanRealismRules = (prompt: string): string => {
+    const keywords = [
+        'persona', 'modelo', 'mano', 'llevando', 'puesto', 'usando', 'sosteniendo',
+        'wearable', 'gorra', 'gafas', 'ropa', 'camiseta', 'vestido', 'calzado',
+        'person', 'model', 'hand', 'wearing', 'using', 'holding'
+    ];
+    const lowerPrompt = prompt.toLowerCase();
+    const hasHuman = keywords.some(k => lowerPrompt.includes(k));
+
+    if (!hasHuman) return "";
+
+    return `
+HUMAN / MODEL REALISM:
+- real human skin texture
+- natural body posture
+- believable hand anatomy
+- no mannequin / no rubber skin / no fake smile / no doll face
+- natural integration between product and body
+- if holding the product, fingers must wrap and compress naturally
+- if wearing the product, fit, folds and contact must look real
+`;
+};
+
 const buildFinalPrompt = (
     products: PreflightData[], 
     userPrompt: string, 
-    extras: { comment?: string }[]
+    extras: ProductImage[]
 ): string => {
     let finalPrompt = "";
 
     // A) Bloque identidad (Multi-producto)
     finalPrompt += buildIdentityBlock(products);
 
-    // B) Bloque reglas globales persistentes (P0/P1/P2)
+    // B) Bloque reglas globales persistentes
     finalPrompt += GLOBAL_RULES;
 
-    // C) Prompt de Escena
+    // C) Human Realism (Conditional)
+    finalPrompt += getHumanRealismRules(userPrompt);
+
+    // D) Prompt de Escena
     const cleanUserPrompt = userPrompt.trim();
     finalPrompt += `\nSCENE INSTRUCTIONS:\n${cleanUserPrompt}\n`;
 
-    // D) Extra references
+    // E) Extra references
     extras.forEach((extra, idx) => {
+        const typeLabel = getReferenceTypeLabel(extra.referenceType);
         if (extra.comment) {
-            finalPrompt += `EXTRA_REFERENCE_${idx + 1}: ${extra.comment}\n`;
+            finalPrompt += `${typeLabel} REFERENCE ${idx + 1}: ${extra.comment}\n`;
+        } else {
+            finalPrompt += `${typeLabel} REFERENCE ${idx + 1}\n`;
         }
     });
 
     return finalPrompt;
+};
+
+const getReferenceTypeLabel = (type?: string): string => {
+    switch (type) {
+        case 'detail': return 'DETAIL';
+        case 'color': return 'COLOR';
+        case 'angle': return 'ANGLE';
+        case 'style': return 'STYLE / MOOD';
+        case 'extra_product': return 'ADDITIONAL PRODUCT';
+        default: return 'EXTRA';
+    }
 };
 
 // 2. GENERATE SIMPLE
@@ -170,7 +242,9 @@ export const generateLifestyleImageSimple = async (
         for (const extra of extraFiles) {
             const extraB64 = await fileToBase64(extra.file);
             parts.push({ inlineData: { mimeType: extra.file.type || 'image/jpeg', data: extraB64 } });
-            if (extra.comment) parts.push({ text: `Style Reference: ${extra.comment}` });
+            const typeLabel = getReferenceTypeLabel(extra.referenceType);
+            const comment = extra.comment ? `: ${extra.comment}` : "";
+            parts.push({ text: `${typeLabel} REFERENCE${comment}` });
         }
     }
 
@@ -185,9 +259,6 @@ export const generateLifestyleImageSimple = async (
             model: modelId,
             contents: { parts },
             config: { 
-                imageConfig: {
-                    aspectRatio: "1:1"
-                },
                 safetySettings: SAFETY_SETTINGS
             }
         });
@@ -241,33 +312,61 @@ export const editLifestyleImageSimple = async (
     sourceImageBlob: Blob,
     productsData: PreflightData[],
     changes: string,
-    originalPrompt: string
+    originalPrompt: string,
+    extraFiles: ProductImage[] = []
 ): Promise<{ imageBlob: Blob, width: number, height: number, promptUsed: string }> => {
     const ai = getAIClient();
     const sourceB64 = await fileToBase64(sourceImageBlob);
     const parts: any[] = [];
 
-    // Source image
+    // 1. Context: Previous Image
     parts.push({ inlineData: { data: sourceB64, mimeType: 'image/png' } });
-    parts.push({ text: "Original Image" });
+    parts.push({ text: "CONTINUITY REFERENCE: keep general composition, mood and scene continuity from the previously generated image unless the requested changes imply otherwise." });
 
-    // Master references
+    // 2. Master references
     for (let i = 0; i < masterFiles.length; i++) {
         const masterB64 = await fileToBase64(masterFiles[i]);
         parts.push({ inlineData: { data: masterB64, mimeType: masterFiles[i].type || 'image/jpeg' } });
         parts.push({ text: `Product Reference ${i + 1}` });
     }
 
+    // 3. Extra references (if any)
+    if (extraFiles.length > 0) {
+        for (const extra of extraFiles) {
+            const extraB64 = await fileToBase64(extra.file);
+            parts.push({ inlineData: { mimeType: extra.file.type || 'image/jpeg', data: extraB64 } });
+            const typeLabel = getReferenceTypeLabel(extra.referenceType);
+            const comment = extra.comment ? `: ${extra.comment}` : "";
+            parts.push({ text: `${typeLabel} REFERENCE${comment}` });
+        }
+    }
+
+    // 4. Build Edit Prompt
+    const identity = buildIdentityBlock(productsData);
+    const humanRealism = getHumanRealismRules(changes + " " + originalPrompt);
+    
+    const editPrompt = `
+You are regenerating the image from scratch.
+${GLOBAL_RULES}
+${identity}
+${humanRealism}
+
+CONTINUITY REFERENCE: keep general composition, mood and scene continuity from the previously generated image unless the requested changes imply otherwise.
+
+ORIGINAL SCENE PROMPT: ${originalPrompt}
+
+REQUESTED CHANGES: ${changes}
+
+Only change what is explicitly requested. Preserve the product identity exactly.
+`;
+
     // Edit instructions last
-    parts.push({ text: `Instruction: Edit the original image to apply these changes: ${changes}. Ensure the product identity is maintained. Context: ${originalPrompt}` });
+    parts.push({ text: `Instruction: ${editPrompt}` });
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: { parts },
         config: {
-            imageConfig: {
-                aspectRatio: "1:1"
-            },
             safetySettings: SAFETY_SETTINGS
         }
     });

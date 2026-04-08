@@ -9,6 +9,8 @@ export enum AppState {
   RESULTS = 'results',
 }
 
+export type ReferenceType = "detail" | "color" | "angle" | "style" | "extra_product" | "other";
+
 export interface ProductImage {
   id: string;
   file: File;
@@ -17,6 +19,7 @@ export interface ProductImage {
   isMaster: boolean;
   comment?: string;
   role?: 'Main' | 'Extra'; // kept for compatibility
+  referenceType?: ReferenceType;
 }
 
 export interface PreflightData {

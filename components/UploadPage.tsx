@@ -1,6 +1,6 @@
 
 import React, { useCallback } from 'react';
-import { ProductImage } from '../types';
+import { ProductImage, ReferenceType } from '../types';
 import { Card } from './common/Card';
 import { UploadIcon, TrashIcon, StarIcon } from './icons';
 
@@ -70,6 +70,13 @@ const UploadPage: React.FC<UploadPageProps> = ({ images, setImages, scenePrompt,
       })));
   };
 
+  const updateReferenceType = (id: string, type: ReferenceType) => {
+      setImages(images.map(img => ({
+          ...img,
+          referenceType: img.id === id ? type : img.referenceType
+      })));
+  };
+
   const masterCount = images.filter(i => i.isMaster).length;
 
   return (
@@ -125,17 +132,33 @@ const UploadPage: React.FC<UploadPageProps> = ({ images, setImages, scenePrompt,
                   ))}
               </div>
               
-              <div className="mt-4 space-y-2">
+              <div className="mt-4 space-y-3">
                  {images.map(img => !img.isMaster && (
-                     <div key={img.id} className="flex items-center gap-2 text-xs">
-                        <img src={img.previewUrl} className="w-8 h-8 rounded object-cover border border-slate-200" alt="mini" />
-                        <input 
-                            type="text" 
-                            placeholder="Describe qué es esto (ej: referencia de estilo)..." 
-                            value={img.comment || ''}
-                            onChange={(e) => updateComment(img.id, e.target.value)}
-                            className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 focus:ring-1 focus:ring-brand-primary outline-none transition-colors"
-                        />
+                     <div key={img.id} className="flex flex-col gap-1.5 p-2 bg-slate-50/50 dark:bg-slate-900/30 rounded-lg border border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                            <img src={img.previewUrl} className="w-10 h-10 rounded object-cover border border-slate-200" alt="mini" />
+                            <div className="flex-1 flex flex-col gap-1">
+                                <select 
+                                    value={img.referenceType || 'other'}
+                                    onChange={(e) => updateReferenceType(img.id, e.target.value as ReferenceType)}
+                                    className="w-fit bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:text-slate-400 outline-none focus:ring-1 focus:ring-brand-primary"
+                                >
+                                    <option value="detail">Detalle</option>
+                                    <option value="color">Otro color</option>
+                                    <option value="angle">Otra vista</option>
+                                    <option value="style">Inspiración</option>
+                                    <option value="extra_product">Producto adicional</option>
+                                    <option value="other">Otro</option>
+                                </select>
+                                <input 
+                                    type="text" 
+                                    placeholder="Comentario libre..." 
+                                    value={img.comment || ''}
+                                    onChange={(e) => updateComment(img.id, e.target.value)}
+                                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-brand-primary outline-none transition-colors"
+                                />
+                            </div>
+                        </div>
                      </div>
                  ))}
               </div>

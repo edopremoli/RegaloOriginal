@@ -179,13 +179,15 @@ const App: React.FC = () => {
           setStatusMessage("Regenerando edición completa...");
 
           try {
+              const extras = images.filter(i => !i.isMaster);
               const masterFiles = masters.map(m => m.file);
               const editResult = await editLifestyleImageSimple(
                   masterFiles,
                   result.imageBlob,
                   preflightProducts,
                   changes,
-                  result.promptUsed
+                  result.promptUsed,
+                  extras
               );
 
               setResult({
