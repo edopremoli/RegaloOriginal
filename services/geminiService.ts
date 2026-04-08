@@ -172,6 +172,23 @@ HUMAN / MODEL REALISM:
 `;
 };
 
+const getReferenceTypeInstructions = (type?: string): string => {
+    switch (type) {
+        case 'detail': 
+            return "Use this image only to preserve small visible details, texture, engraving, stitching or graphic elements. Do not change the main product shape.";
+        case 'color': 
+            return "Use this image only as a color / finish reference. Preserve the shape and identity from the MASTER.";
+        case 'angle': 
+            return "Use this image only to understand secondary visible geometry or another angle of the same product.";
+        case 'style': 
+            return "Use this image only for mood, lighting or atmosphere. Do not copy objects, logos or composition literally.";
+        case 'extra_product': 
+            return "This image is an additional product that should also appear naturally in the final scene if the prompt implies multiple products.";
+        default: 
+            return "";
+    }
+};
+
 const buildFinalPrompt = (
     products: PreflightData[], 
     userPrompt: string, 
@@ -195,10 +212,11 @@ const buildFinalPrompt = (
     // E) Extra references
     extras.forEach((extra, idx) => {
         const typeLabel = getReferenceTypeLabel(extra.referenceType);
+        const instructions = getReferenceTypeInstructions(extra.referenceType);
         if (extra.comment) {
-            finalPrompt += `${typeLabel} REFERENCE ${idx + 1}: ${extra.comment}\n`;
+            finalPrompt += `${typeLabel} REFERENCE ${idx + 1}: ${extra.comment}. ${instructions}\n`;
         } else {
-            finalPrompt += `${typeLabel} REFERENCE ${idx + 1}\n`;
+            finalPrompt += `${typeLabel} REFERENCE ${idx + 1}. ${instructions}\n`;
         }
     });
 
@@ -216,6 +234,84 @@ const getReferenceTypeLabel = (type?: string): string => {
     }
 };
 
+const getImageDimensions = (blob: Blob): Promise<{ width: number, height: number }> => {
+    return new Promise((resolve) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+            const dims = { width: img.naturalWidth, height: img.naturalHeight };
+            URL.revokeObjectURL(url);
+            resolve(dims);
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve({ width: 1024, height: 1024 }); // Fallback
+        };
+        img.src = url;
+    });
+};
+
+export const qaCheckGeneratedImage = async (
+    imageBlob: Blob,
+    promptUsed: string,
+    productsData: PreflightData[]
+): Promise<{ pass: boolean, issues: string[] }> => {
+    const ai = getAIClient();
+    const imageB64 = await fileToBase64(imageBlob);
+    const identity = buildIdentityBlock(productsData);
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: {
+            parts: [
+                { inlineData: { data: imageB64, mimeType: 'image/png' } },
+                { text: `
+                Analyze the generated image against the intended prompt and product identity.
+                
+                INTENDED PRODUCT IDENTITY:
+                ${identity}
+                
+                PROMPT USED:
+                ${promptUsed}
+                
+                Check for these specific issues:
+                1. Human realism: fake/rubber skin, mannequin look, uncanny hands/fingers, doll-like faces.
+                2. Pasted look: product looks like it was cut and pasted on the background, lacks integration.
+                3. Depth/Integration: poor perspective, lack of depth, or product doesn't feel part of the environment.
+                4. Shadows/Contact: weak or missing contact shadows where the product touches surfaces.
+                5. Invented text: unwanted text, labels, or branding that wasn't in the master images.
+                6. Unwanted duplicates: more products than requested.
+                
+                Respond ONLY in JSON format:
+                {
+                  "pass": boolean,
+                  "issues": string[] // list of detected issues from the categories above
+                }
+                ` }
+            ]
+        },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    pass: { type: Type.BOOLEAN },
+                    issues: { type: Type.ARRAY, items: { type: Type.STRING } }
+                },
+                required: ["pass", "issues"]
+            }
+        }
+    });
+
+    try {
+        const text = response.text?.trim() || '{"pass": true, "issues": []}';
+        return JSON.parse(text);
+    } catch (e) {
+        console.error("QA Parse Error", e);
+        return { pass: true, issues: [] }; // Fallback to pass if QA fails to parse
+    }
+};
+
 // 2. GENERATE SIMPLE
 export const generateLifestyleImageSimple = async (
     masterFiles: File[], 
@@ -228,82 +324,92 @@ export const generateLifestyleImageSimple = async (
     const modelId = 'gemini-2.5-flash-image';
     const prompt = buildFinalPrompt(productsData, userScenePrompt, extraFiles);
     
-    const parts: any[] = [];
+    let retryCount = 0;
+    let lastBlob: Blob | null = null;
+    let lastPrompt = prompt;
 
-    // Images first for context
-    for (let i = 0; i < masterFiles.length; i++) {
-        const file = masterFiles[i];
-        const masterB64 = await fileToBase64(file);
-        parts.push({ inlineData: { mimeType: file.type || 'image/jpeg', data: masterB64 } });
-        parts.push({ text: `Product Reference ${i + 1}` });
-    }
+    while (retryCount <= 2) {
+        const parts: any[] = [];
 
-    if (extraFiles.length > 0) {
-        for (const extra of extraFiles) {
-            const extraB64 = await fileToBase64(extra.file);
-            parts.push({ inlineData: { mimeType: extra.file.type || 'image/jpeg', data: extraB64 } });
-            const typeLabel = getReferenceTypeLabel(extra.referenceType);
-            const comment = extra.comment ? `: ${extra.comment}` : "";
-            parts.push({ text: `${typeLabel} REFERENCE${comment}` });
+        // Images first for context
+        for (let i = 0; i < masterFiles.length; i++) {
+            const file = masterFiles[i];
+            const masterB64 = await fileToBase64(file);
+            parts.push({ inlineData: { mimeType: file.type || 'image/jpeg', data: masterB64 } });
+            parts.push({ text: `Product Reference ${i + 1}` });
         }
-    }
 
-    // Prompt last as the final instruction
-    parts.push({ text: `Instruction: Generate a photorealistic lifestyle image featuring the product(s) above. ${prompt}` });
-
-    console.log("Generating with model:", modelId);
-    console.log("Prompt length:", prompt.length);
-
-    try {
-        const response = await ai.models.generateContent({
-            model: modelId,
-            contents: { parts },
-            config: { 
-                safetySettings: SAFETY_SETTINGS
+        if (extraFiles.length > 0) {
+            for (const extra of extraFiles) {
+                const extraB64 = await fileToBase64(extra.file);
+                parts.push({ inlineData: { mimeType: extra.file.type || 'image/jpeg', data: extraB64 } });
+                const typeLabel = getReferenceTypeLabel(extra.referenceType);
+                const comment = extra.comment ? `: ${extra.comment}` : "";
+                const instructions = getReferenceTypeInstructions(extra.referenceType);
+                parts.push({ text: `${typeLabel} REFERENCE${comment}. ${instructions}` });
             }
-        });
-
-        console.log("Response from Gemini:", JSON.stringify(response, null, 2));
-
-        if (!response.candidates || response.candidates.length === 0) {
-            throw new Error("The model refused to generate an image. This might be due to safety filters or an invalid prompt.");
         }
 
-        const candidate = response.candidates[0];
-        
-        if (candidate.finishReason === 'SAFETY') {
-            throw new Error("The image generation was blocked by safety filters. Please try a different prompt.");
+        // Prompt last as the final instruction
+        parts.push({ text: `Instruction: Generate a photorealistic lifestyle image featuring the product(s) above. ${lastPrompt}` });
+
+        console.log(`Generating (Attempt ${retryCount + 1}) with model:`, modelId);
+
+        try {
+            const response = await ai.models.generateContent({
+                model: modelId,
+                contents: { parts },
+                config: { 
+                    safetySettings: SAFETY_SETTINGS
+                }
+            });
+
+            if (!response.candidates || response.candidates.length === 0) {
+                throw new Error("The model refused to generate an image.");
+            }
+
+            const candidate = response.candidates[0];
+            if (candidate.finishReason === 'SAFETY') {
+                throw new Error("The image generation was blocked by safety filters.");
+            }
+
+            const imagePart = candidate.content?.parts?.find(part => part.inlineData);
+            if (!imagePart?.inlineData?.data) {
+                throw new Error("Failed to generate image data.");
+            }
+
+            const base64 = imagePart.inlineData.data;
+            const byteCharacters = atob(base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+            const imageBlob = new Blob([new Uint8Array(byteNumbers)], { type: 'image/png' });
+            lastBlob = imageBlob;
+
+            // QA Check
+            const qa = await qaCheckGeneratedImage(imageBlob, lastPrompt, productsData);
+            if (qa.pass || retryCount === 2) {
+                const dims = await getImageDimensions(imageBlob);
+                return {
+                    imageBlob,
+                    width: dims.width,
+                    height: dims.height,
+                    promptUsed: lastPrompt
+                };
+            }
+
+            // Retry logic
+            retryCount++;
+            console.log(`QA Failed (Attempt ${retryCount}):`, qa.issues);
+            lastPrompt = `${prompt}\n\nCorrective priorities: stronger physical integration, better contact shadows, more realistic humans, more depth, avoid pasted look. Detected issues: ${qa.issues.join(', ')}.`;
+
+        } catch (apiError: any) {
+            console.error(`Attempt ${retryCount + 1} failed:`, apiError);
+            if (retryCount === 2) throw apiError;
+            retryCount++;
         }
-
-        const imagePart = candidate.content?.parts?.find(part => part.inlineData);
-
-        if (!imagePart?.inlineData?.data) {
-            const textPart = candidate.content?.parts?.find(part => part.text);
-            let refusalReason = textPart?.text ? `: ${textPart.text}` : "";
-            
-            throw new Error(`Failed to generate image${refusalReason}. (Finish Reason: ${candidate.finishReason}). Please check your prompt and try again.`);
-        }
-
-        const base64 = imagePart.inlineData.data;
-        const byteCharacters = atob(base64);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const imageBlob = new Blob([byteArray], { type: 'image/png' });
-
-        return {
-            imageBlob,
-            width: 1024,
-            height: 1024,
-            promptUsed: prompt
-        };
-    } catch (apiError: any) {
-        console.error("Gemini API Error:", apiError);
-        const errorMsg = apiError.message || String(apiError);
-        throw new Error(`Gemini API Error: ${errorMsg}`);
     }
+
+    throw new Error("Failed to generate a high-quality image after retries.");
 };
 
 // 3. EDIT SIMPLE
@@ -317,35 +423,11 @@ export const editLifestyleImageSimple = async (
 ): Promise<{ imageBlob: Blob, width: number, height: number, promptUsed: string }> => {
     const ai = getAIClient();
     const sourceB64 = await fileToBase64(sourceImageBlob);
-    const parts: any[] = [];
-
-    // 1. Context: Previous Image
-    parts.push({ inlineData: { data: sourceB64, mimeType: 'image/png' } });
-    parts.push({ text: "CONTINUITY REFERENCE: keep general composition, mood and scene continuity from the previously generated image unless the requested changes imply otherwise." });
-
-    // 2. Master references
-    for (let i = 0; i < masterFiles.length; i++) {
-        const masterB64 = await fileToBase64(masterFiles[i]);
-        parts.push({ inlineData: { data: masterB64, mimeType: masterFiles[i].type || 'image/jpeg' } });
-        parts.push({ text: `Product Reference ${i + 1}` });
-    }
-
-    // 3. Extra references (if any)
-    if (extraFiles.length > 0) {
-        for (const extra of extraFiles) {
-            const extraB64 = await fileToBase64(extra.file);
-            parts.push({ inlineData: { mimeType: extra.file.type || 'image/jpeg', data: extraB64 } });
-            const typeLabel = getReferenceTypeLabel(extra.referenceType);
-            const comment = extra.comment ? `: ${extra.comment}` : "";
-            parts.push({ text: `${typeLabel} REFERENCE${comment}` });
-        }
-    }
-
-    // 4. Build Edit Prompt
+    
     const identity = buildIdentityBlock(productsData);
     const humanRealism = getHumanRealismRules(changes + " " + originalPrompt);
     
-    const editPrompt = `
+    const baseEditPrompt = `
 You are regenerating the image from scratch.
 ${GLOBAL_RULES}
 ${identity}
@@ -360,38 +442,88 @@ REQUESTED CHANGES: ${changes}
 Only change what is explicitly requested. Preserve the product identity exactly.
 `;
 
-    // Edit instructions last
-    parts.push({ text: `Instruction: ${editPrompt}` });
+    let retryCount = 0;
+    let lastPrompt = baseEditPrompt;
 
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts },
-        config: {
-            safetySettings: SAFETY_SETTINGS
+    while (retryCount <= 2) {
+        const parts: any[] = [];
+
+        // 1. Context: Previous Image
+        parts.push({ inlineData: { data: sourceB64, mimeType: 'image/png' } });
+        parts.push({ text: "CONTINUITY REFERENCE: keep general composition, mood and scene continuity from the previously generated image unless the requested changes imply otherwise." });
+
+        // 2. Master references
+        for (let i = 0; i < masterFiles.length; i++) {
+            const masterB64 = await fileToBase64(masterFiles[i]);
+            parts.push({ inlineData: { data: masterB64, mimeType: masterFiles[i].type || 'image/jpeg' } });
+            parts.push({ text: `Product Reference ${i + 1}` });
         }
-    });
 
-    const candidate = response.candidates?.[0];
-    if (candidate?.finishReason === 'SAFETY') {
-        throw new Error("The edit was blocked by safety filters. Please try a different request.");
+        // 3. Extra references (if any)
+        if (extraFiles.length > 0) {
+            for (const extra of extraFiles) {
+                const extraB64 = await fileToBase64(extra.file);
+                parts.push({ inlineData: { mimeType: extra.file.type || 'image/jpeg', data: extraB64 } });
+                const typeLabel = getReferenceTypeLabel(extra.referenceType);
+                const comment = extra.comment ? `: ${extra.comment}` : "";
+                const instructions = getReferenceTypeInstructions(extra.referenceType);
+                parts.push({ text: `${typeLabel} REFERENCE${comment}. ${instructions}` });
+            }
+        }
+
+        // Edit instructions last
+        parts.push({ text: `Instruction: ${lastPrompt}` });
+
+        try {
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: { parts },
+                config: {
+                    safetySettings: SAFETY_SETTINGS
+                }
+            });
+
+            const candidate = response.candidates?.[0];
+            if (candidate?.finishReason === 'SAFETY') {
+                throw new Error("The edit was blocked by safety filters.");
+            }
+
+            const imagePart = candidate?.content?.parts?.find(p => p.inlineData);
+            if (!imagePart?.inlineData?.data) {
+                throw new Error("Edit failed to generate image data.");
+            }
+
+            const base64 = imagePart.inlineData.data;
+            const byteCharacters = atob(base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+            const imageBlob = new Blob([new Uint8Array(byteNumbers)], { type: 'image/png' });
+
+            // QA Check
+            const qa = await qaCheckGeneratedImage(imageBlob, lastPrompt, productsData);
+            if (qa.pass || retryCount === 2) {
+                const dims = await getImageDimensions(imageBlob);
+                return {
+                    imageBlob,
+                    width: dims.width,
+                    height: dims.height,
+                    promptUsed: lastPrompt
+                };
+            }
+
+            // Retry logic
+            retryCount++;
+            console.log(`Edit QA Failed (Attempt ${retryCount}):`, qa.issues);
+            lastPrompt = `${baseEditPrompt}\n\nCorrective priorities: stronger physical integration, better contact shadows, more realistic humans, more depth, avoid pasted look. Detected issues: ${qa.issues.join(', ')}.`;
+
+        } catch (apiError: any) {
+            console.error(`Edit Attempt ${retryCount + 1} failed:`, apiError);
+            if (retryCount === 2) throw apiError;
+            retryCount++;
+        }
     }
 
-    const imagePart = candidate?.content?.parts?.find(p => p.inlineData);
-    if (!imagePart?.inlineData?.data) {
-        const textPart = candidate?.content?.parts?.find(p => p.text);
-        const refusalReason = textPart?.text ? `: ${textPart.text}` : "";
-        throw new Error(`Edit failed${refusalReason}. (Finish Reason: ${candidate?.finishReason})`);
-    }
-
-    const base64 = imagePart.inlineData.data;
-    const byteCharacters = atob(base64);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const imageBlob = new Blob([new Uint8Array(byteNumbers)], { type: 'image/png' });
-
-    return { imageBlob, width: 1024, height: 1024, promptUsed: `EDIT: ${changes}` };
+    throw new Error("Failed to edit image with high quality after retries.");
 };
 
 // 4. GENERATE FULL
