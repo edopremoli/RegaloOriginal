@@ -1,9 +1,11 @@
 
 import React, { useState } from 'react';
-import { SimpleGenerationResult } from '../types';
+import { SimpleGenerationResult, ImageGenerationModel, OutputPresetId } from '../types';
 import { Card } from './common/Card';
 import { Button } from './common/Button';
 import { SparklesIcon } from './icons';
+import { ModelSelector } from './ModelSelector';
+import { OutputPresetSelector } from './OutputPresetSelector';
 
 interface ResultsPageProps {
   result: SimpleGenerationResult;
@@ -11,9 +13,23 @@ interface ResultsPageProps {
   isEditing: boolean;
   onRestart: () => void;
   onGenerateNew: (newPrompt: string) => void;
+  selectedModel: ImageGenerationModel;
+  onModelChange: (model: ImageGenerationModel) => void;
+  selectedPreset: OutputPresetId;
+  onPresetChange: (presetId: OutputPresetId) => void;
 }
 
-const ResultsPage: React.FC<ResultsPageProps> = ({ result, onEdit, isEditing, onRestart, onGenerateNew }) => {
+const ResultsPage: React.FC<ResultsPageProps> = ({ 
+  result, 
+  onEdit, 
+  isEditing, 
+  onRestart, 
+  onGenerateNew, 
+  selectedModel, 
+  onModelChange,
+  selectedPreset,
+  onPresetChange
+}) => {
   const [showPrompt, setShowPrompt] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showNewPrompt, setShowNewPrompt] = useState(false);
@@ -62,74 +78,107 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onEdit, isEditing, on
                     onClick={() => setShowPrompt(!showPrompt)}
                     className="text-sm text-brand-primary hover:underline"
                 >
-                    {showPrompt ? 'Ocultar Prompt' : 'Ver Prompt Usado'}
+                    {showPrompt ? 'Ocultar Debug' : 'Ver Debug Info'}
                 </button>
             </div>
 
             {showPrompt && (
-                <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-800 rounded text-xs font-mono whitespace-pre-wrap border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400">
-                    {result.promptUsed}
+                <div className="mt-2 space-y-4">
+                    {result.debugInfo && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                             {Object.entries(result.debugInfo).map(([k, v]) => (
+                                 <div key={k} className="p-2 bg-brand-primary/5 rounded border border-brand-primary/10">
+                                     <div className="text-[10px] uppercase font-bold text-slate-500">{k}</div>
+                                     <div className="text-xs font-mono text-brand-primary truncate" title={String(v)}>
+                                         {Array.isArray(v) ? v.join(', ') || 'none' : String(v)}
+                                     </div>
+                                 </div>
+                             ))}
+                        </div>
+                    )}
+
+                    <div className="space-y-2">
+                        {result.lastEditChanges && (
+                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded text-xs border border-blue-100 dark:border-blue-800 text-blue-700 dark:text-blue-300">
+                                <span className="font-bold uppercase tracking-tighter mr-2">[EDIT REQUEST]:</span> {result.lastEditChanges}
+                            </div>
+                        )}
+                        <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded text-xs font-mono whitespace-pre-wrap border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 max-h-60 overflow-y-auto">
+                            <span className="font-bold text-brand-primary mb-1 block uppercase tracking-tighter">[FINAL PROMPT SENT TO MODEL]:</span>
+                            {result.promptUsed}
+                        </div>
+                    </div>
                 </div>
             )}
         </Card>
 
         {/* Edit Section */}
-        <div className="grid md:grid-cols-2 gap-6">
-            <Card>
-                <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowEdit(!showEdit)}>
-                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                        <SparklesIcon className="w-5 h-5 text-brand-primary" /> Editar Imagen Actual
-                    </h3>
-                    <span className="text-sm text-slate-500">{showEdit ? '▼' : '▶'}</span>
-                </div>
-                
-                {showEdit && (
-                    <div className="mt-4 animate-fadeIn">
-                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
-                            Describe cambios manteniendo la composición actual.
-                        </p>
-                        <textarea 
-                            value={changesText}
-                            onChange={(e) => setChangesText(e.target.value)}
-                            className="w-full h-24 p-3 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 focus:ring-2 focus:ring-brand-primary outline-none text-sm mb-3"
-                            placeholder="Ej: Haz la luz más cálida, añade vapor a la taza..."
-                        />
-                        <div className="flex justify-end">
-                            <Button onClick={handleEditSubmit} isLoading={isEditing} disabled={!changesText.trim()}>
-                                Editar
-                            </Button>
-                        </div>
+        <div className="space-y-6">
+            <ModelSelector selectedModel={selectedModel} onModelChange={onModelChange} />
+            <div className="grid grid-cols-1 gap-6">
+                <OutputPresetSelector 
+                    selectedPreset={selectedPreset}
+                    onPresetChange={onPresetChange}
+                />
+            </div>
+            
+            <div className="grid md:grid-cols-2 gap-6">
+                <Card>
+                    <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowEdit(!showEdit)}>
+                        <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                            <SparklesIcon className="w-5 h-5 text-brand-primary" /> Editar Imagen Actual
+                        </h3>
+                        <span className="text-sm text-slate-500">{showEdit ? '▼' : '▶'}</span>
                     </div>
-                )}
-            </Card>
-
-            <Card>
-                 <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowNewPrompt(!showNewPrompt)}>
-                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                        <span className="text-brand-primary text-xl">↻</span> Generar Nuevo Prompt
-                    </h3>
-                    <span className="text-sm text-slate-500">{showNewPrompt ? '▼' : '▶'}</span>
-                </div>
-                 
-                 {showNewPrompt && (
-                     <div className="mt-4 animate-fadeIn">
-                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
-                            Genera una imagen totalmente nueva con estos productos.
-                        </p>
-                        <textarea 
-                            value={newPromptText}
-                            onChange={(e) => setNewPromptText(e.target.value)}
-                            className="w-full h-24 p-3 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 focus:ring-2 focus:ring-brand-primary outline-none text-sm mb-3"
-                            placeholder="Ej: El producto está en una playa al atardecer..."
-                        />
-                        <div className="flex justify-end">
-                            <Button onClick={handleNewPromptSubmit} isLoading={isEditing} disabled={!newPromptText.trim()}>
-                                Generar Nuevo
-                            </Button>
+                    
+                    {showEdit && (
+                        <div className="mt-4 animate-fadeIn">
+                            <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
+                                Describe cambios manteniendo la composición actual.
+                            </p>
+                            <textarea 
+                                value={changesText}
+                                onChange={(e) => setChangesText(e.target.value)}
+                                className="w-full h-24 p-3 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 focus:ring-2 focus:ring-brand-primary outline-none text-sm mb-3"
+                                placeholder="Ej: Haz la luz más cálida, añade vapor a la taza..."
+                            />
+                            <div className="flex justify-end">
+                                <Button onClick={handleEditSubmit} isLoading={isEditing} disabled={!changesText.trim()}>
+                                    Editar
+                                </Button>
+                            </div>
                         </div>
-                     </div>
-                 )}
-            </Card>
+                    )}
+                </Card>
+
+                <Card>
+                     <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowNewPrompt(!showNewPrompt)}>
+                        <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                            <span className="text-brand-primary text-xl">↻</span> Generar Nuevo Prompt
+                        </h3>
+                        <span className="text-sm text-slate-500">{showNewPrompt ? '▼' : '▶'}</span>
+                    </div>
+                     
+                     {showNewPrompt && (
+                         <div className="mt-4 animate-fadeIn">
+                            <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
+                                Genera una imagen totalmente nueva con estos productos.
+                            </p>
+                            <textarea 
+                                value={newPromptText}
+                                onChange={(e) => setNewPromptText(e.target.value)}
+                                className="w-full h-24 p-3 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 focus:ring-2 focus:ring-brand-primary outline-none text-sm mb-3"
+                                placeholder="Ej: El producto está en una playa al atardecer..."
+                            />
+                            <div className="flex justify-end">
+                                <Button onClick={handleNewPromptSubmit} isLoading={isEditing} disabled={!newPromptText.trim()}>
+                                    Generar Nuevo
+                                </Button>
+                            </div>
+                         </div>
+                     )}
+                </Card>
+            </div>
         </div>
     </div>
   );

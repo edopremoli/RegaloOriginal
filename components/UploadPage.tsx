@@ -77,7 +77,21 @@ const UploadPage: React.FC<UploadPageProps> = ({ images, setImages, scenePrompt,
       })));
   };
 
-  const masterCount = images.filter(i => i.isMaster).length;
+  const updateAppliesTo = (id: string, masterId: string | "all") => {
+      setImages(images.map(img => ({
+          ...img,
+          appliesToProductCardId: img.id === id ? masterId : img.appliesToProductCardId
+      })));
+  };
+
+  const updateIdentityRelation = (id: string, relation: "same_product" | "additional_product" | "inspiration") => {
+      setImages(images.map(img => ({
+          ...img,
+          identityRelation: img.id === id ? relation : img.identityRelation
+      })));
+  };
+
+  const masters = images.filter(i => i.isMaster);
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -137,19 +151,44 @@ const UploadPage: React.FC<UploadPageProps> = ({ images, setImages, scenePrompt,
                      <div key={img.id} className="flex flex-col gap-1.5 p-2 bg-slate-50/50 dark:bg-slate-900/30 rounded-lg border border-slate-100 dark:border-slate-800">
                         <div className="flex items-center gap-2">
                             <img src={img.previewUrl} className="w-10 h-10 rounded object-cover border border-slate-200" alt="mini" />
-                            <div className="flex-1 flex flex-col gap-1">
-                                <select 
-                                    value={img.referenceType || 'other'}
-                                    onChange={(e) => updateReferenceType(img.id, e.target.value as ReferenceType)}
-                                    className="w-fit bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:text-slate-400 outline-none focus:ring-1 focus:ring-brand-primary"
-                                >
-                                    <option value="detail">Detalle</option>
-                                    <option value="color">Otro color</option>
-                                    <option value="angle">Otra vista</option>
-                                    <option value="style">Inspiración</option>
-                                    <option value="extra_product">Producto adicional</option>
-                                    <option value="other">Otro</option>
-                                </select>
+                             <div className="flex-1 flex flex-col gap-1.5">
+                                <div className="flex flex-wrap gap-1.5">
+                                    <select 
+                                        value={img.referenceType || 'other'}
+                                        onChange={(e) => updateReferenceType(img.id, e.target.value as ReferenceType)}
+                                        className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:text-slate-400 outline-none focus:ring-1 focus:ring-brand-primary"
+                                    >
+                                        <option value="detail">Detalle</option>
+                                        <option value="color">Otro color</option>
+                                        <option value="angle">Otra vista</option>
+                                        <option value="style">Inspiración</option>
+                                        <option value="extra_product">Producto adicional</option>
+                                        <option value="other">Otro</option>
+                                    </select>
+
+                                    <select 
+                                        value={img.identityRelation || 'same_product'}
+                                        onChange={(e) => updateIdentityRelation(img.id, e.target.value as any)}
+                                        className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:text-slate-400 outline-none focus:ring-1 focus:ring-brand-primary"
+                                    >
+                                        <option value="same_product">Mismo producto</option>
+                                        <option value="additional_product">Producto adicional</option>
+                                        <option value="inspiration">Inspiración</option>
+                                    </select>
+
+                                    {img.identityRelation === 'same_product' && masters.length > 1 && (
+                                        <select 
+                                            value={img.appliesToProductCardId || 'all'}
+                                            onChange={(e) => updateAppliesTo(img.id, e.target.value)}
+                                            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:text-slate-400 outline-none focus:ring-1 focus:ring-brand-primary"
+                                        >
+                                            <option value="all">Aplica a todos</option>
+                                            {masters.map((m, idx) => (
+                                                <option key={m.id} value={m.id}>Aplica a Master {idx + 1}</option>
+                                            ))}
+                                        </select>
+                                    )}
+                                </div>
                                 <input 
                                     type="text" 
                                     placeholder="Comentario libre..." 

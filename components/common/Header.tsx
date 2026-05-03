@@ -11,27 +11,31 @@ interface HeaderProps {
   onBack: () => void;
   isNextDisabled: boolean;
   nextLabel?: string;
+  onShowUsage?: () => void;
 }
 
 const STEPS = [
     { id: 'upload',   label: 'Subir + Prompt',     icon: <UploadIcon />, state: AppState.UPLOAD },
     { id: 'preflight',  label: 'Preflight',  icon: <SearchIcon />, state: AppState.PREFLIGHT },
+    { id: 'config',  label: 'Ajustes',  icon: <SparklesIcon />, state: AppState.CONFIG },
     { id: 'results', label: 'Resultado',   icon: <SparklesIcon />, state: AppState.RESULTS },
 ];
 
-export const Header: React.FC<HeaderProps> = ({ appState, onHome, onNext, onBack, isNextDisabled, nextLabel }) => {
+export const Header: React.FC<HeaderProps> = ({ appState, onHome, onNext, onBack, isNextDisabled, nextLabel, onShowUsage }) => {
   
-  const showNavButtons = [AppState.UPLOAD, AppState.PREFLIGHT].includes(appState);
-  const showBack = appState === AppState.PREFLIGHT;
+  const showNavButtons = [AppState.UPLOAD, AppState.PREFLIGHT, AppState.CONFIG].includes(appState);
+  const showBack = [AppState.PREFLIGHT, AppState.CONFIG].includes(appState);
   
   const getStepStatus = (stepState: AppState) => {
       if (appState === stepState) return 'current';
       if (appState === AppState.RESULTS) return 'completed';
       if (appState === AppState.GENERATING || appState === AppState.ANALYZING) {
            if (stepState === AppState.UPLOAD) return 'completed';
-           if (stepState === AppState.PREFLIGHT && appState === AppState.GENERATING) return 'completed';
+           if (stepState === AppState.PREFLIGHT) return 'completed';
+           if (stepState === AppState.CONFIG && appState === AppState.GENERATING) return 'completed';
       }
       if (appState === AppState.PREFLIGHT && stepState === AppState.UPLOAD) return 'completed';
+      if (appState === AppState.CONFIG && [AppState.UPLOAD, AppState.PREFLIGHT].includes(stepState)) return 'completed';
       return 'pending';
   };
 
@@ -70,7 +74,16 @@ export const Header: React.FC<HeaderProps> = ({ appState, onHome, onNext, onBack
                 })}
             </nav>
             
-            <div className="w-10"></div> {/* Spacer for balance */}
+            {onShowUsage ? (
+                <button 
+                  onClick={onShowUsage}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors hidden sm:block"
+                >
+                  Gasto
+                </button>
+            ) : (
+                <div className="w-10"></div>
+            )}
         </div>
       </header>
       

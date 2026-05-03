@@ -5,6 +5,7 @@ export enum AppState {
   UPLOAD = 'upload',
   ANALYZING = 'analyzing',
   PREFLIGHT = 'preflight',
+  CONFIG = 'config',
   GENERATING = 'generating',
   RESULTS = 'results',
 }
@@ -20,6 +21,8 @@ export interface ProductImage {
   comment?: string;
   role?: 'Main' | 'Extra'; // kept for compatibility
   referenceType?: ReferenceType;
+  appliesToProductCardId?: string | "all";
+  identityRelation?: "same_product" | "additional_product" | "inspiration";
 }
 
 export interface PreflightData {
@@ -38,7 +41,55 @@ export interface SimpleGenerationResult {
   width: number;
   height: number;
   promptUsed: string;
+  baseScenePrompt?: string;
+  lastEditChanges?: string;
+  debugInfo?: any;
 }
+
+export type ImageGenerationModel = 'gemini-3.1-flash-image-preview' | 'gemini-3-pro-image-preview';
+
+export type OutputPresetId = 'web_ro' | 'social' | 'square';
+
+export interface ModelOption {
+  id: ImageGenerationModel;
+  label: string;
+  description: string;
+  isPro: boolean;
+  basePrice: number;
+  sizeInternal: string;
+}
+
+export const MODEL_OPTIONS: ModelOption[] = [
+  { 
+    id: 'gemini-3.1-flash-image-preview', 
+    label: 'Standard', 
+    description: 'Rápido, económico y suficiente para la mayoría de escenas.', 
+    isPro: false,
+    basePrice: 0.067,
+    sizeInternal: '1K'
+  },
+  { 
+    id: 'gemini-3-pro-image-preview', 
+    label: 'Pro', 
+    description: 'Más detalle fotográfico y mejor composición compleja.', 
+    isPro: true,
+    basePrice: 0.134,
+    sizeInternal: '2K'
+  }
+];
+
+export interface OutputPresetOption {
+  id: OutputPresetId;
+  label: string;
+  description: string;
+  aspectRatio: string;
+}
+
+export const PRESET_OPTIONS: OutputPresetOption[] = [
+  { id: 'web_ro', label: 'Web RO', description: 'Formato horizontal para web. Recorte final en Photoshop.', aspectRatio: '5:4' },
+  { id: 'social', label: 'Social 4:5', description: 'Formato vertical para LinkedIn / Instagram.', aspectRatio: '4:5' },
+  { id: 'square', label: 'Cuadrado', description: 'Formato 1:1 para pruebas o producto centrado.', aspectRatio: '1:1' }
+];
 
 export interface AppError {
   message: string;
