@@ -18,6 +18,12 @@ const SAFETY_SETTINGS = [
 const ENABLE_AUTO_QA = false;
 const IMAGE_GENERATION_TIMEOUT_MS = 120000;
 
+const normalizeTextForMatching = (text: string): string =>
+    text
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
 // --- SIMPLIFIED PROMPT TEMPLATE ---
 const buildSimplifiedTemplate = (
     products: PreflightData[], 
@@ -25,7 +31,7 @@ const buildSimplifiedTemplate = (
     criticalDetail: string = "",
     negativePrompt: string = ""
 ): string => {
-    const lowerScenePrompt = userScenePrompt.toLowerCase();
+    const normalizedScenePrompt = normalizeTextForMatching(userScenePrompt);
     const mockupTerms = [
         'frontal perfecto',
         'frontal completamente paralelo',
@@ -35,7 +41,9 @@ const buildSimplifiedTemplate = (
         'tipo catálogo',
         'fondo desenfocado'
     ];
-    const hasMockupRiskTerm = mockupTerms.some(term => lowerScenePrompt.includes(term));
+    const hasMockupRiskTerm = mockupTerms.some(term =>
+        normalizedScenePrompt.includes(normalizeTextForMatching(term))
+    );
     const sceneWithGuardrail = hasMockupRiskTerm
         ? `${userScenePrompt}\n\nComposition note: keep commercial legibility, but avoid mockup/billboard composition; the product must remain naturally integrated with realistic scale, contact, perspective and light.`
         : userScenePrompt;
