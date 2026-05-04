@@ -18,6 +18,12 @@ const SAFETY_SETTINGS = [
 const ENABLE_AUTO_QA = false;
 const IMAGE_GENERATION_TIMEOUT_MS = 120000;
 
+const normalizeTextForMatching = (text: string): string =>
+    text
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
 // --- SIMPLIFIED PROMPT TEMPLATE ---
 const buildSimplifiedTemplate = (
     products: PreflightData[], 
@@ -25,6 +31,23 @@ const buildSimplifiedTemplate = (
     criticalDetail: string = "",
     negativePrompt: string = ""
 ): string => {
+    const normalizedScenePrompt = normalizeTextForMatching(userScenePrompt);
+    const mockupTerms = [
+        'frontal perfecto',
+        'frontal completamente paralelo',
+        'ocupa media imagen',
+        'producto gigante',
+        'centrado perfecto',
+        'tipo catálogo',
+        'fondo desenfocado'
+    ];
+    const hasMockupRiskTerm = mockupTerms.some(term =>
+        normalizedScenePrompt.includes(normalizeTextForMatching(term))
+    );
+    const sceneWithGuardrail = hasMockupRiskTerm
+        ? `${userScenePrompt}\n\nComposition note: keep commercial legibility, but avoid mockup/billboard composition; the product must remain naturally integrated with realistic scale, contact, perspective and light.`
+        : userScenePrompt;
+
     const productDesc = products.map(p => 
         `${p.object_name_es}${p.material_finish_es ? `. Material/Finish: ${p.material_finish_es}` : ''}.${p.alto_cm ? ` Dimensions: ${p.alto_cm}x${p.ancho_cm}cm.` : ''}`
     ).join('\n');
@@ -34,10 +57,10 @@ PRODUCT IDENTITY:
 ${productDesc}
 
 SCENE:
-${userScenePrompt}
+${sceneWithGuardrail}
 
 INTEGRATION:
-Use the master product as identity reference, not as a pixel layer or cutout. Recreate the same product as a real object photographed inside the scene. Preserve recognizable shape, proportions, material, color, construction and key visible details, but adapt light direction, light softness, color temperature, scale, perspective, lens depth, shadows, reflections and contact to the environment. The product must belong physically to the table, hand, body or surface around it. Avoid pasted-on object, mockup look, floating product, cutout edges, halo, mismatched lighting, impossible scale or billboard-like product.
+Use the master product as identity reference, not as a pixel layer or cutout. Recreate the same product as a real object photographed inside the scene. Preserve recognizable shape, proportions, material, color, construction and key visible details, but adapt light direction, light softness, color temperature, scale, perspective, lens depth, shadows, reflections and contact to the environment. The product must physically belong to the table, hand, body or nearby surface. Add believable contact shadows, subtle occlusion where the product touches hands or surfaces, and scale coherent with surrounding objects. Avoid pasted-on object, mockup look, floating product, cutout edges, halo, mismatched lighting, impossible scale, billboard-like product or isolated studio-object look.
 
 ${criticalDetail ? `CRITICAL DETAIL:\n${criticalDetail}\n` : ''}
 NEGATIVE:
