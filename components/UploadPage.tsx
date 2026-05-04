@@ -126,6 +126,9 @@ const UploadPage: React.FC<UploadPageProps> = ({
   };
 
   const masters = images.filter(i => i.isMaster);
+  const sameIdentityCount = images.filter(i => !i.isMaster && i.identityRelation === 'same_product').length;
+  const additionalProductCount = images.filter(i => !i.isMaster && i.identityRelation === 'additional_product').length;
+  const inspirationCount = images.filter(i => !i.isMaster && (i.identityRelation === 'inspiration' || !i.identityRelation)).length;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -205,9 +208,9 @@ const UploadPage: React.FC<UploadPageProps> = ({
                                         onChange={(e) => updateIdentityRelation(img.id, e.target.value as any)}
                                         className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:text-slate-400 outline-none focus:ring-1 focus:ring-brand-primary"
                                     >
-                                        <option value="same_product">Mismo producto</option>
-                                        <option value="additional_product">Producto adicional</option>
-                                        <option value="inspiration">Inspiración</option>
+                                        <option value="same_product">Otra vista / detalle del mismo producto</option>
+                                        <option value="additional_product">Segundo producto real que debe poder aparecer</option>
+                                        <option value="inspiration">Solo inspiración de escena / luz / mood (no se envía como producto)</option>
                                     </select>
 
                                     {img.identityRelation === 'same_product' && masters.length > 1 && (
@@ -234,6 +237,21 @@ const UploadPage: React.FC<UploadPageProps> = ({
                         </div>
                      </div>
                  ))}
+              </div>
+              <div className="mt-4 p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 text-xs text-slate-600 dark:text-slate-300 space-y-1">
+                <p className="font-semibold">Resumen de referencias</p>
+                <p>Masters: {masters.length}</p>
+                <p>Misma identidad: {sameIdentityCount}</p>
+                <p>Producto adicional: {additionalProductCount}</p>
+                <p>Inspiración: {inspirationCount}</p>
+                <p className="pt-1 text-slate-500 dark:text-slate-400">
+                  Las imágenes de inspiración no se usan como identidad de producto. Sirven para guiar ambiente, luz o composición.
+                </p>
+                {inspirationCount > 0 && (
+                  <p className="text-amber-700 dark:text-amber-400 font-medium">
+                    Las imágenes de inspiración no se enviarán como producto al generador final.
+                  </p>
+                )}
               </div>
           </Card>
 
