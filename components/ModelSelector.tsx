@@ -25,11 +25,17 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ selectedModel, onM
                             : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-800'
                         }`}
                     >
-                        <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center justify-between mb-3 w-full gap-2">
                             <span className={`font-bold text-base leading-tight ${selectedModel === opt.id ? 'text-brand-primary dark:text-blue-400' : 'text-slate-800 dark:text-slate-100'}`}>
                                 {opt.label}
                             </span>
-                            {opt.isPro && (
+                            {opt.id === 'gemini-2.5-flash-image' && (
+                                <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter border border-emerald-200 dark:border-emerald-800 shrink-0">Default</span>
+                            )}
+                            {opt.id === 'gemini-3.1-flash-image-preview' && (
+                                <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter border border-indigo-200 dark:border-indigo-800 shrink-0">Experimental</span>
+                            )}
+                            {opt.id === 'gemini-3-pro-image-preview' && (
                                 <span className="text-[10px] bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter border border-amber-200 dark:border-amber-800 shrink-0">Pro</span>
                             )}
                         </div>

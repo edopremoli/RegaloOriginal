@@ -39,8 +39,8 @@ export const UsageModal: React.FC<UsageModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6">
-          <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
-            Estimación local basada en generaciones realizadas desde esta app. El gasto real debe comprobarse de manera oficial en AI Studio / Google Cloud Billing.
+          <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700 leading-relaxed">
+            Estimación local conservadora basada en generaciones registradas por esta app. El gasto real puede ser mayor porque Google Billing también puede incluir preflight, llamadas fallidas, tokens de entrada/salida, uso del assistant y otros consumos del proyecto. Comprueba el gasto oficial en AI Studio / Google Cloud Billing.
           </p>
 
           <div className="grid grid-cols-2 gap-4">
@@ -58,19 +58,21 @@ export const UsageModal: React.FC<UsageModalProps> = ({ isOpen, onClose }) => {
           </div>
 
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Desglose (Mes)</h3>
-            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-700/50">
-                <span className="text-sm text-slate-600 dark:text-slate-400">Standard</span>
-                <span className="text-sm font-medium dark:text-white">
-                  {summary.standardCount} imgs / ${summary.standardCost.toFixed(3)}
-                </span>
-            </div>
-            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-700/50">
-                <span className="text-sm text-slate-600 dark:text-slate-400">Pro</span>
-                <span className="text-sm font-medium dark:text-white">
-                  {summary.proCount} imgs / ${summary.proCost.toFixed(3)}
-                </span>
-            </div>
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Desglose por Modelo (Mes)</h3>
+            {Object.keys(summary.modelBreakdown).map((mId) => {
+              const stats = summary.modelBreakdown[mId];
+              return (
+                <div key={mId} className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-700/50">
+                    <span className="text-sm text-slate-600 dark:text-slate-400">{stats.label}</span>
+                    <span className="text-sm font-medium dark:text-white">
+                      {stats.count} imgs / ${stats.cost.toFixed(3)}
+                    </span>
+                </div>
+              );
+            })}
+            {Object.keys(summary.modelBreakdown).length === 0 && (
+              <p className="text-xs text-slate-400 italic">No hay datos de generación registrados este mes.</p>
+            )}
           </div>
 
           {summary.history.length > 0 && (

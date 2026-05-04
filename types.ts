@@ -46,7 +46,10 @@ export interface SimpleGenerationResult {
   debugInfo?: any;
 }
 
-export type ImageGenerationModel = 'gemini-3.1-flash-image-preview' | 'gemini-3-pro-image-preview';
+export type ImageGenerationModel =
+  | 'gemini-2.5-flash-image'
+  | 'gemini-3.1-flash-image-preview'
+  | 'gemini-3-pro-image-preview';
 
 export type OutputPresetId = 'web_ro' | 'social' | 'square';
 
@@ -61,20 +64,28 @@ export interface ModelOption {
 
 export const MODEL_OPTIONS: ModelOption[] = [
   { 
-    id: 'gemini-3.1-flash-image-preview', 
-    label: 'Standard', 
-    description: 'Rápido, económico y suficiente para la mayoría de escenas.', 
+    id: 'gemini-2.5-flash-image', 
+    label: 'Stable (2.5 Flash Image)', 
+    description: 'Modelo actual estable. Usar por defecto si quieres evitar riesgos.', 
     isPro: false,
-    basePrice: 0.067,
+    basePrice: 0.11,
+    sizeInternal: 'default'
+  },
+  { 
+    id: 'gemini-3.1-flash-image-preview', 
+    label: 'Experimental (3.1 Flash Image)', 
+    description: 'Modelo nuevo para probar calidad e integración. Puede fallar o comportarse distinto.', 
+    isPro: false,
+    basePrice: 0.11,
     sizeInternal: '1K'
   },
   { 
     id: 'gemini-3-pro-image-preview', 
-    label: 'Pro', 
-    description: 'Más detalle fotográfico y mejor composición compleja.', 
+    label: 'Pro (3 Pro Image)', 
+    description: 'Modelo de máxima calidad para pruebas importantes. Más caro y potencialmente más lento.', 
     isPro: true,
-    basePrice: 0.134,
-    sizeInternal: '2K'
+    basePrice: 0.22,
+    sizeInternal: 'default'
   }
 ];
 

@@ -7,11 +7,29 @@ import { UploadIcon, TrashIcon, StarIcon } from './icons';
 interface UploadPageProps {
   images: ProductImage[];
   setImages: (images: ProductImage[]) => void;
+  rawPrompt: string;
+  setRawPrompt: (prompt: string) => void;
   scenePrompt: string;
   setScenePrompt: (prompt: string) => void;
+  criticalDetail: string;
+  setCriticalDetail: (detail: string) => void;
+  negativePrompt: string;
+  setNegativePrompt: (negative: string) => void;
 }
 
-const UploadPage: React.FC<UploadPageProps> = ({ images, setImages, scenePrompt, setScenePrompt }) => {
+const UploadPage: React.FC<UploadPageProps> = ({ 
+    images, 
+    setImages, 
+    rawPrompt,
+    setRawPrompt,
+    scenePrompt, 
+    setScenePrompt,
+    criticalDetail,
+    setCriticalDetail,
+    negativePrompt,
+    setNegativePrompt
+}) => {
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
   const MAX_IMAGES = 7; // Total images limit
 
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -39,7 +57,9 @@ const UploadPage: React.FC<UploadPageProps> = ({ images, setImages, scenePrompt,
             previewUrl: url,
             thumbnailUrl: url,
             isMaster,
-            comment: ''
+            comment: '',
+            identityRelation: isMaster ? undefined : 'inspiration',
+            referenceType: isMaster ? undefined : 'style'
         });
     }
     
@@ -71,10 +91,24 @@ const UploadPage: React.FC<UploadPageProps> = ({ images, setImages, scenePrompt,
   };
 
   const updateReferenceType = (id: string, type: ReferenceType) => {
-      setImages(images.map(img => ({
-          ...img,
-          referenceType: img.id === id ? type : img.referenceType
-      })));
+      setImages(images.map(img => {
+          if (img.id !== id) return img;
+          let newIdentity: "same_product" | "additional_product" | "inspiration" = img.identityRelation || "inspiration";
+          
+          if (type === 'detail' || type === 'angle' || type === 'color') {
+              newIdentity = 'same_product';
+          } else if (type === 'extra_product') {
+              newIdentity = 'additional_product';
+          } else if (type === 'style' || type === 'other') {
+              newIdentity = 'inspiration';
+          }
+
+          return {
+              ...img,
+              referenceType: type,
+              identityRelation: newIdentity
+          };
+      }));
   };
 
   const updateAppliesTo = (id: string, masterId: string | "all") => {
@@ -154,7 +188,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ images, setImages, scenePrompt,
                              <div className="flex-1 flex flex-col gap-1.5">
                                 <div className="flex flex-wrap gap-1.5">
                                     <select 
-                                        value={img.referenceType || 'other'}
+                                        value={img.referenceType || 'style'}
                                         onChange={(e) => updateReferenceType(img.id, e.target.value as ReferenceType)}
                                         className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:text-slate-400 outline-none focus:ring-1 focus:ring-brand-primary"
                                     >
@@ -167,7 +201,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ images, setImages, scenePrompt,
                                     </select>
 
                                     <select 
-                                        value={img.identityRelation || 'same_product'}
+                                        value={img.identityRelation || 'inspiration'}
                                         onChange={(e) => updateIdentityRelation(img.id, e.target.value as any)}
                                         className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:text-slate-400 outline-none focus:ring-1 focus:ring-brand-primary"
                                     >
@@ -206,20 +240,65 @@ const UploadPage: React.FC<UploadPageProps> = ({ images, setImages, scenePrompt,
           {/* 2. PROMPT SECTION */}
           <Card className="flex flex-col h-full">
             <div className="mb-4 border-b border-slate-100 dark:border-slate-700 pb-2">
-                <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">2. Descripción de Escena</h2>
+                <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">2. Prompt de generación</h2>
             </div>
             
-            <div className="flex-grow flex flex-col">
-                <p className="text-sm text-slate-500 mb-3 leading-relaxed">
-                    Describe dónde quieres ver tu producto. Sé creativo. 
-                    <br/><span className="text-xs opacity-70">El sistema respetará la identidad visual del objeto Master (P0).</span>
-                </p>
-                <textarea 
-                    value={scenePrompt}
-                    onChange={(e) => setScenePrompt(e.target.value)}
-                    className="w-full flex-grow min-h-[160px] p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary outline-none text-base text-slate-700 dark:text-slate-200 placeholder:text-slate-400 leading-relaxed resize-none transition-all"
-                    placeholder="Ej: El producto está situado sobre una mesa de madera rústica en una terraza soleada. Hay sombras de hojas de árboles proyectadas suavemente..."
-                />
+            <div className="flex-grow flex flex-col space-y-4">
+                <div className="flex-grow flex flex-col">
+                   <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+                       Pega aquí el prompt completo del Prompt Builder o escribe una escena breve. El sistema detectará automáticamente los bloques ESCENA, DETALLE CRÍTICO y NEGATIVE.
+                   </p>
+                   <textarea 
+                       value={rawPrompt}
+                       onChange={(e) => setRawPrompt(e.target.value)}
+                       className="w-full flex-grow min-h-[220px] p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary outline-none text-base text-slate-700 dark:text-slate-200 placeholder:text-slate-400 leading-relaxed resize-none transition-all"
+                       placeholder="Pega aquí el prompt completo..."
+                   />
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50">
+                    <button 
+                        onClick={() => setShowAdvanced(!showAdvanced)}
+                        className="text-xs font-bold text-slate-500 hover:text-brand-primary uppercase tracking-widest flex items-center gap-1 transition-colors"
+                    >
+                        {showAdvanced ? '− Ocultar bloques' : '+ Ver bloques detectados'}
+                    </button>
+
+                    {showAdvanced && (
+                        <div className="mt-4 space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                            {(!scenePrompt && !criticalDetail && !negativePrompt) ? (
+                                <p className="text-xs text-slate-400 italic py-2">No hay bloques detectados todavía.</p>
+                            ) : (
+                                <>
+                                    {scenePrompt && (
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Escena detectada</p>
+                                            <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 italic">
+                                                {scenePrompt}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {criticalDetail && (
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Detalle crítico detectado</p>
+                                            <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 italic">
+                                                {criticalDetail}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {negativePrompt && (
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Negative detectado</p>
+                                            <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 italic">
+                                                {negativePrompt}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
           </Card>
 

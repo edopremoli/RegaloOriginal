@@ -16,15 +16,18 @@ export interface UsageEntry {
   generatedImageAttempts?: number;
 }
 
+export interface ModelUsage {
+  count: number;
+  cost: number;
+  label: string;
+}
+
 export interface UsageSummary {
   todayCost: number;
   todayGenerations: number;
   monthCost: number;
   monthGenerations: number;
-  standardCount: number;
-  standardCost: number;
-  proCount: number;
-  proCost: number;
+  modelBreakdown: Record<string, ModelUsage>;
   history: UsageEntry[];
 }
 
@@ -69,10 +72,8 @@ export const getUsageSummary = (): UsageSummary => {
   let todayGenerations = 0;
   let monthCost = 0;
   let monthGenerations = 0;
-  let standardCount = 0;
-  let standardCost = 0;
-  let proCount = 0;
-  let proCost = 0;
+  
+  const modelBreakdown: Record<string, ModelUsage> = {};
 
   history.forEach(entry => {
     if (entry.timestamp >= startOfMonth) {
@@ -83,14 +84,16 @@ export const getUsageSummary = (): UsageSummary => {
       monthCost += entry.estimatedCostUsd;
       monthGenerations++;
 
-      const isPro = entry.modelId === 'gemini-3-pro-image-preview';
-      if (isPro) {
-        proCount++;
-        proCost += entry.estimatedCostUsd;
-      } else {
-        standardCount++;
-        standardCost += entry.estimatedCostUsd;
+      const mId = entry.modelId;
+      if (!modelBreakdown[mId]) {
+        modelBreakdown[mId] = {
+          count: 0,
+          cost: 0,
+          label: entry.modelLabel || mId
+        };
       }
+      modelBreakdown[mId].count++;
+      modelBreakdown[mId].cost += entry.estimatedCostUsd;
     }
   });
 
@@ -99,10 +102,7 @@ export const getUsageSummary = (): UsageSummary => {
     todayGenerations,
     monthCost,
     monthGenerations,
-    standardCount,
-    standardCost,
-    proCount,
-    proCost,
+    modelBreakdown,
     history: history.slice(0, 10)
   };
 };

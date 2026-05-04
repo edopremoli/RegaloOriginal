@@ -10,6 +10,7 @@ import { Header } from './components/common/Header';
 import { analyzeProductImage, generateLifestyleImageSimple, editLifestyleImageSimple, parseDimensionsFromPrompt } from './services/geminiService';
 import { SafeBoundary } from './components/SafeBoundary';
 import { logGenerationUsage } from './utils/usageTracker';
+import { parsePromptBlocks } from './utils/promptParser';
 import { UsageModal } from './components/UsageModal';
 
 const App: React.FC = () => {
@@ -19,14 +20,25 @@ const App: React.FC = () => {
   
   // Data State
   const [images, setImages] = useState<ProductImage[]>([]);
+  const [rawPrompt, setRawPrompt] = useState('');
   const [scenePrompt, setScenePrompt] = useState('');
+  const [criticalDetail, setCriticalDetail] = useState('');
+  const [negativePrompt, setNegativePrompt] = useState('');
+  
+  // Internal prompt parser
+  useEffect(() => {
+    const { scenePrompt: sp, criticalDetail: cd, negativePrompt: np } = parsePromptBlocks(rawPrompt);
+    setScenePrompt(sp);
+    setCriticalDetail(cd);
+    setNegativePrompt(np);
+  }, [rawPrompt]);
   
   // Multi-Master Analysis State
   const [preflightProducts, setPreflightProducts] = useState<PreflightData[]>([]);
   const [isPreflightDirty, setIsPreflightDirty] = useState(false);
 
   const [result, setResult] = useState<SimpleGenerationResult | null>(null);
-  const [selectedModel, setSelectedModel] = useState<ImageGenerationModel>('gemini-3.1-flash-image-preview');
+  const [selectedModel, setSelectedModel] = useState<ImageGenerationModel>('gemini-2.5-flash-image');
   const [selectedPreset, setSelectedPreset] = useState<OutputPresetId>('web_ro');
   
   // UI State
@@ -165,7 +177,7 @@ const App: React.FC = () => {
 
           setAppState(AppState.GENERATING);
           setIsPreflightDirty(false); // Reset dirty flag on generate
-          setStatusMessage("Generando imagen de escena... Esto puede tardar unos segundos.");
+          setStatusMessage("Preparando referencias...");
           
           const promptToUse = overridePrompt || scenePrompt;
 
@@ -175,9 +187,33 @@ const App: React.FC = () => {
               const preset = PRESET_OPTIONS.find(p => p.id === selectedPreset) || PRESET_OPTIONS[0];
               const currentModelOpts = MODEL_OPTIONS.find(m => m.id === selectedModel) || MODEL_OPTIONS[0];
 
+              // Update status
+              setTimeout(() => {
+                setStatusMessage("Generando imagen de escena... Esto puede tardar unos segundos.");
+              }, 1000);
+
+              const timeoutCheck = setTimeout(() => {
+                setStatusMessage("La generación está tardando más de lo normal...");
+              }, 45000);
+
               // Pass the array of product data
-              const genResult = await generateLifestyleImageSimple(masterFiles, extras, preflightProducts, promptToUse, getMasterImages(), selectedModel, preset.aspectRatio, preset.id, currentModelOpts.sizeInternal);
+              const genResult = await generateLifestyleImageSimple(
+                  masterFiles, 
+                  extras, 
+                  preflightProducts, 
+                  promptToUse, 
+                  getMasterImages(), 
+                  selectedModel, 
+                  preset.aspectRatio, 
+                  preset.id, 
+                  currentModelOpts.sizeInternal,
+                  criticalDetail,
+                  negativePrompt
+              );
               
+              clearTimeout(timeoutCheck);
+              setStatusMessage("Procesando resultado...");
+
               const attempts = genResult.debugInfo?.generatedImageAttempts || 1;
               logGenerationUsage({
                   operation: "generate",
@@ -189,7 +225,7 @@ const App: React.FC = () => {
                   estimatedCostUsd: currentModelOpts.basePrice * attempts,
                   actualWidth: genResult.width,
                   actualHeight: genResult.height,
-                  retryCount: genResult.debugInfo?.retries,
+                  retryCount: genResult.debugInfo?.retryCount,
                   generatedImageAttempts: attempts
               });
 
@@ -227,7 +263,11 @@ const App: React.FC = () => {
   };
 
   const handleGenerateNewPrompt = (newPrompt: string) => {
-      setScenePrompt(newPrompt);
+      setRawPrompt(newPrompt); // this will trigger the useEffect, but we also want handleGenerate to fire
+      const { scenePrompt: sp, criticalDetail: cd, negativePrompt: np } = parsePromptBlocks(newPrompt);
+      setScenePrompt(sp);
+      setCriticalDetail(cd);
+      setNegativePrompt(np);
       handleGenerate(newPrompt);
   };
 
@@ -245,6 +285,15 @@ const App: React.FC = () => {
               const preset = PRESET_OPTIONS.find(p => p.id === selectedPreset) || PRESET_OPTIONS[0];
               const currentModelOpts = MODEL_OPTIONS.find(m => m.id === selectedModel) || MODEL_OPTIONS[0];
 
+              setStatusMessage("Preparando edición...");
+              setTimeout(() => {
+                  setStatusMessage("Aplicando cambios a la imagen...");
+              }, 1000);
+
+              const timeoutCheck = setTimeout(() => {
+                  setStatusMessage("La edición está tardando más de lo normal...");
+              }, 45000);
+
               const editResult = await editLifestyleImageSimple(
                   masterFiles,
                   result.imageBlob,
@@ -256,8 +305,13 @@ const App: React.FC = () => {
                   selectedModel,
                   preset.aspectRatio,
                   preset.id,
-                  currentModelOpts.sizeInternal
+                  currentModelOpts.sizeInternal,
+                  criticalDetail,
+                  negativePrompt
               );
+
+              clearTimeout(timeoutCheck);
+              setStatusMessage("Procesando edición...");
 
               const attempts = editResult.debugInfo?.generatedImageAttempts || 1;
               logGenerationUsage({
@@ -311,7 +365,10 @@ const App: React.FC = () => {
 
   const handleStartOver = () => {
       setImages([]);
+      setRawPrompt('');
       setScenePrompt('');
+      setCriticalDetail('');
+      setNegativePrompt('');
       setPreflightProducts([]);
       setIsPreflightDirty(false);
       setResult(null);
@@ -327,8 +384,14 @@ const App: React.FC = () => {
                   <UploadPage 
                     images={images} 
                     setImages={setImages} 
+                    rawPrompt={rawPrompt}
+                    setRawPrompt={setRawPrompt}
                     scenePrompt={scenePrompt} 
-                    setScenePrompt={setScenePrompt} 
+                    setScenePrompt={setScenePrompt}
+                    criticalDetail={criticalDetail}
+                    setCriticalDetail={setCriticalDetail}
+                    negativePrompt={negativePrompt}
+                    setNegativePrompt={setNegativePrompt}
                   />
               );
           case AppState.ANALYZING:
