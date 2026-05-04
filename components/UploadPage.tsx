@@ -126,9 +126,6 @@ const UploadPage: React.FC<UploadPageProps> = ({
   };
 
   const masters = images.filter(i => i.isMaster);
-  const sameIdentityCount = images.filter(i => !i.isMaster && i.identityRelation === 'same_product').length;
-  const additionalProductCount = images.filter(i => !i.isMaster && i.identityRelation === 'additional_product').length;
-  const inspirationCount = images.filter(i => !i.isMaster && (i.identityRelation === 'inspiration' || !i.identityRelation)).length;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -237,21 +234,36 @@ const UploadPage: React.FC<UploadPageProps> = ({
                         </div>
                      </div>
                  ))}
-              </div>
-              <div className="mt-4 p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 text-xs text-slate-600 dark:text-slate-300 space-y-1">
-                <p className="font-semibold">Resumen de referencias</p>
-                <p>Masters: {masters.length}</p>
-                <p>Misma identidad: {sameIdentityCount}</p>
-                <p>Producto adicional: {additionalProductCount}</p>
-                <p>Inspiración: {inspirationCount}</p>
-                <p className="pt-1 text-slate-500 dark:text-slate-400">
-                  Las imágenes de inspiración no se usan como identidad de producto. Sirven para guiar ambiente, luz o composición.
-                </p>
-                {inspirationCount > 0 && (
-                  <p className="text-amber-700 dark:text-amber-400 font-medium">
-                    Las imágenes de inspiración no se enviarán como producto al generador final.
-                  </p>
-                )}
+                 
+                 {images.length > 0 && (
+                     <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                         <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Resumen de referencias</h3>
+                         <div className="grid grid-cols-2 gap-2 text-xs">
+                             <div className="flex justify-between items-center p-2 bg-white dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                                 <span className="text-slate-600 dark:text-slate-400">Masters</span>
+                                 <span className="font-bold text-brand-primary">{masters.length}</span>
+                             </div>
+                             <div className="flex justify-between items-center p-2 bg-white dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                                 <span className="text-slate-600 dark:text-slate-400">Misma identidad</span>
+                                 <span className="font-bold text-slate-700 dark:text-slate-300">{images.filter(i => !i.isMaster && i.identityRelation === 'same_product').length}</span>
+                             </div>
+                             <div className="flex justify-between items-center p-2 bg-white dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                                 <span className="text-slate-600 dark:text-slate-400">Prod. adicional</span>
+                                 <span className="font-bold text-slate-700 dark:text-slate-300">{images.filter(i => !i.isMaster && i.identityRelation === 'additional_product').length}</span>
+                             </div>
+                             <div className="flex justify-between items-center p-2 bg-white dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                                 <span className="text-slate-600 dark:text-slate-400">Inspiración</span>
+                                 <span className="font-bold text-slate-700 dark:text-slate-300">{images.filter(i => !i.isMaster && i.identityRelation === 'inspiration').length}</span>
+                             </div>
+                         </div>
+                         
+                         {images.some(i => !i.isMaster && i.identityRelation === 'inspiration') && (
+                             <div className="mt-3 p-2.5 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400 text-xs rounded border border-amber-200 dark:border-amber-800/50 leading-relaxed">
+                                 <strong>Nota:</strong> Las imágenes de inspiración no se enviarán como producto al generador final. Sirven para guiar ambiente, luz o composición.
+                             </div>
+                         )}
+                     </div>
+                 )}
               </div>
           </Card>
 

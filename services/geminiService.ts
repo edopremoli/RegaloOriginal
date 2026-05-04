@@ -18,12 +18,6 @@ const SAFETY_SETTINGS = [
 const ENABLE_AUTO_QA = false;
 const IMAGE_GENERATION_TIMEOUT_MS = 120000;
 
-const normalizeTextForMatching = (text: string): string =>
-    text
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '');
-
 // --- SIMPLIFIED PROMPT TEMPLATE ---
 const buildSimplifiedTemplate = (
     products: PreflightData[], 
@@ -31,22 +25,20 @@ const buildSimplifiedTemplate = (
     criticalDetail: string = "",
     negativePrompt: string = ""
 ): string => {
-    const normalizedScenePrompt = normalizeTextForMatching(userScenePrompt);
+    // 3. Mockup guardrail 
     const mockupTerms = [
-        'frontal perfecto',
-        'frontal completamente paralelo',
-        'ocupa media imagen',
-        'producto gigante',
-        'centrado perfecto',
-        'tipo catálogo',
-        'fondo desenfocado'
+        "frontal perfecto", "frontal completamente paralelo",
+        "ocupa media imagen", "producto gigante", "centrado perfecto",
+        "tipo catalogo", "fondo desenfocado"
     ];
-    const hasMockupRiskTerm = mockupTerms.some(term =>
-        normalizedScenePrompt.includes(normalizeTextForMatching(term))
-    );
-    const sceneWithGuardrail = hasMockupRiskTerm
-        ? `${userScenePrompt}\n\nComposition note: keep commercial legibility, but avoid mockup/billboard composition; the product must remain naturally integrated with realistic scale, contact, perspective and light.`
-        : userScenePrompt;
+    
+    // Normalize string to check for diacritics
+    const normalizedScene = userScenePrompt.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    
+    let processedScenePrompt = userScenePrompt;
+    if (mockupTerms.some(term => normalizedScene.includes(term))) {
+         processedScenePrompt += "\n\nComposition note: keep commercial legibility, but avoid mockup/billboard composition; the product must remain naturally integrated with realistic scale, contact, perspective and light.";
+    }
 
     const productDesc = products.map(p => 
         `${p.object_name_es}${p.material_finish_es ? `. Material/Finish: ${p.material_finish_es}` : ''}.${p.alto_cm ? ` Dimensions: ${p.alto_cm}x${p.ancho_cm}cm.` : ''}`
@@ -57,14 +49,14 @@ PRODUCT IDENTITY:
 ${productDesc}
 
 SCENE:
-${sceneWithGuardrail}
+${processedScenePrompt}
 
 INTEGRATION:
-Use the master product as identity reference, not as a pixel layer or cutout. Recreate the same product as a real object photographed inside the scene. Preserve recognizable shape, proportions, material, color, construction and key visible details, but adapt light direction, light softness, color temperature, scale, perspective, lens depth, shadows, reflections and contact to the environment. The product must physically belong to the table, hand, body or nearby surface. Add believable contact shadows, subtle occlusion where the product touches hands or surfaces, and scale coherent with surrounding objects. Avoid pasted-on object, mockup look, floating product, cutout edges, halo, mismatched lighting, impossible scale, billboard-like product or isolated studio-object look.
+Use the master product as identity reference, not as a pixel layer or cutout. Recreate the same product as a real object photographed inside the scene. Preserve recognizable shape, proportions, material, color, construction and key visible details, but adapt light direction, light softness, color temperature, scale, perspective, lens depth, shadows, reflections and contact to the environment. Ensure a credible contact shadow and subtle occlusion when touching hands/surfaces. Maintain coherent scale with nearby objects. The product must belong physically to the table, hand, body or surface around it. Avoid pasted-on object, mockup look, floating product, cutout edges, halo, mismatched lighting, impossible scale, billboard-like product and isolated studio-object look.
 
 ${criticalDetail ? `CRITICAL DETAIL:\n${criticalDetail}\n` : ''}
 NEGATIVE:
-${negativePrompt} pasted-on product, cutout edges, halo, floating object, mismatched lighting, impossible scale, mockup look, billboard product, distorted logo, inconsistent texture.
+${negativePrompt} pasted-on product, cutout edges, halo, floating object, mismatched lighting, impossible scale, mockup look, billboard product, distorted logo, inconsistent texture, isolated studio-object look.
 `.trim();
 };
 
@@ -256,24 +248,23 @@ export const generateLifestyleImageSimple = async (
     const prompt = buildSimplifiedTemplate(productsData, userScenePrompt, criticalDetail, negativePrompt);
     
     let lastPrompt = prompt;
+    lastPrompt += `\n\nREFERENCE IMAGE ROLES:
+- Master images: identity reference only, not cutout layers.
+- Same-product extras: construction/material/detail clarification only.
+- Additional products: separate products only if requested by the scene.
+- Inspiration images: excluded from final generation call.`;
 
     const parts: any[] = [];
 
     // 1. All images first (EXCLUDING inspiration)
     for (const file of masterFiles) {
         const masterB64 = await fileToBase64(file);
-        parts.push({ text: "MASTER PRODUCT IMAGE. Use this image as strict product identity reference only, not as a cutout layer. Recreate the same product physically inside the scene with matching light, scale, perspective, shadows and contact." });
         parts.push({ inlineData: { mimeType: file.type || 'image/jpeg', data: masterB64 } });
     }
 
     const relevantExtras = extraFiles.filter(e => e.identityRelation !== 'inspiration');
     for (const extra of relevantExtras) {
         const extraB64 = await fileToBase64(extra.file);
-        if (extra.identityRelation === 'same_product') {
-            parts.push({ text: "SAME PRODUCT EXTRA VIEW. Use only to clarify product construction, material, side/back/detail or color. Do not treat as a separate object." });
-        } else if (extra.identityRelation === 'additional_product') {
-            parts.push({ text: "ADDITIONAL PRODUCT IMAGE. This is a separate real product only if the prompt asks for it or if it is coherent with the scene." });
-        }
         parts.push({ inlineData: { mimeType: extra.file.type || 'image/jpeg', data: extraB64 } });
     }
 
@@ -287,11 +278,10 @@ export const generateLifestyleImageSimple = async (
             model: modelId,
             contents: { parts },
             config: { 
-                responseModalities: ['Image'],
+                responseModalities: ['IMAGE'],
                 imageConfig: { 
                     aspectRatio: aspectRatio as any
-                },
-                safetySettings: SAFETY_SETTINGS
+                }
             }
         }));
 
@@ -344,7 +334,10 @@ export const generateLifestyleImageSimple = async (
     } catch (apiError: any) {
         console.error(`Generation failed:`, apiError);
         const msg = apiError.message?.toLowerCase() || '';
-        if (msg.includes('not found') || msg.includes('unavailable') || msg.includes('permission denied')) {
+        if (msg.includes('unavailable') || msg.includes('high demand') || msg.includes('503')) {
+            throw new Error(`Los servidores de Google tienen alta demanda en este momento (Error 503). Por favor, inténtalo de nuevo. Spikes in demand are usually temporary.`);
+        }
+        if (msg.includes('not found') || msg.includes('permission denied') || msg.includes('403') || msg.includes('404')) {
             throw new Error(`Este modelo no está disponible para esta API key o proyecto. Vuelve a Stable.`);
         }
         throw apiError;
@@ -387,6 +380,21 @@ export const editLifestyleImageSimple = async (
     const ai = getAIClient();
     const sourceB64 = await fileToBase64(sourceImageBlob);
     
+    // Mockup guardrail 
+    const mockupTerms = [
+        "frontal perfecto", "frontal completamente paralelo",
+        "ocupa media imagen", "producto gigante", "centrado perfecto",
+        "tipo catalogo", "fondo desenfocado"
+    ];
+    
+    // Normalize string to check for diacritics
+    const normalizedScene = baseScenePrompt.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    
+    let processedScenePrompt = baseScenePrompt;
+    if (mockupTerms.some(term => normalizedScene.includes(term))) {
+         processedScenePrompt += "\n\nComposition note: keep commercial legibility, but avoid mockup/billboard composition; the product must remain naturally integrated with realistic scale, contact, perspective and light.";
+    }
+
     const productDesc = productsData.map(p => 
         `${p.object_name_es}${p.material_finish_es ? `. Material/Finish: ${p.material_finish_es}` : ''}.${p.alto_cm ? ` Dimensions: ${p.alto_cm}x${p.ancho_cm}cm.` : ''}`
     ).join('\n');
@@ -398,27 +406,30 @@ USER CHANGES:
 ${changes}
 
 ORIGINAL SCENE:
-${baseScenePrompt}
+${processedScenePrompt}
 
 PRODUCT IDENTITY:
 ${productDesc}
 
 INTEGRATION:
-Use the master product as identity reference, not as a pixel layer or cutout. Recreate the same product as a real object photographed inside the scene. Preserve recognizable shape, proportions, material, color, construction and key visible details, but adapt light direction, light softness, color temperature, scale, perspective, lens depth, shadows, reflections and contact to the environment. The product must belong physically to the table, hand, body or surface around it. Avoid pasted-on object, mockup look, floating product, cutout edges, halo, mismatched lighting, impossible scale or billboard-like product.
+Use the master product as identity reference, not as a pixel layer or cutout. Recreate the same product as a real object photographed inside the scene. Preserve recognizable shape, proportions, material, color, construction and key visible details, but adapt light direction, light softness, color temperature, scale, perspective, lens depth, shadows, reflections and contact to the environment. Ensure a credible contact shadow and subtle occlusion when touching hands/surfaces. Maintain coherent scale with nearby objects. The product must belong physically to the table, hand, body or surface around it. Avoid pasted-on object, mockup look, floating product, cutout edges, halo, mismatched lighting, impossible scale, billboard-like product and isolated studio-object look.
 
 ${criticalDetail ? `CRITICAL DETAIL:\n${criticalDetail}\n` : ''}
 NEGATIVE:
-${negativePrompt} pasted-on product, cutout edges, halo, floating object, mismatched lighting, impossible scale, mockup look, billboard product, distorted logo, inconsistent texture.`.trim();
+${negativePrompt} pasted-on product, cutout edges, halo, floating object, mismatched lighting, impossible scale, mockup look, billboard product, distorted logo, inconsistent texture, isolated studio-object look.`.trim();
+    let finalPrompt = prompt + `\n\nREFERENCE IMAGE ROLES:
+- Master images: identity reference only, not cutout layers.
+- Same-product extras: construction/material/detail clarification only.
+- Additional products: separate products only if requested by the scene.
+- Inspiration images: excluded from final generation call.`;
     
     const parts: any[] = [];
     // 1. Context: Previous Image
-    parts.push({ text: "PREVIOUS IMAGE. Use only as a loose composition reference." });
     parts.push({ inlineData: { data: sourceB64, mimeType: 'image/png' } });
 
     // 2. Master references
     for (const file of masterFiles) {
         const masterB64 = await fileToBase64(file);
-        parts.push({ text: "MASTER PRODUCT IMAGE. Use this image as strict product identity reference only, not as a cutout layer. Recreate the same product physically inside the scene with matching light, scale, perspective, shadows and contact." });
         parts.push({ inlineData: { data: masterB64, mimeType: file.type || 'image/jpeg' } });
     }
 
@@ -426,27 +437,21 @@ ${negativePrompt} pasted-on product, cutout edges, halo, floating object, mismat
     const relevantExtras = extraFiles.filter(e => e.identityRelation !== 'inspiration');
     for (const extra of relevantExtras) {
         const extraB64 = await fileToBase64(extra.file);
-        if (extra.identityRelation === 'same_product') {
-            parts.push({ text: "SAME PRODUCT EXTRA VIEW. Use only to clarify product construction, material, side/back/detail or color. Do not treat as a separate object." });
-        } else if (extra.identityRelation === 'additional_product') {
-            parts.push({ text: "ADDITIONAL PRODUCT IMAGE. This is a separate real product only if the prompt asks for it or if it is coherent with the scene." });
-        }
         parts.push({ inlineData: { mimeType: extra.file.type || 'image/jpeg', data: extraB64 } });
     }
 
     // 4. Single text instruction at the end
-    parts.push({ text: prompt });
+    parts.push({ text: finalPrompt });
 
     try {
         const response = await callImageGenerationWithRetry(() => ai.models.generateContent({
             model: modelId,
             contents: { parts },
             config: {
-                responseModalities: ['Image'],
+                responseModalities: ['IMAGE'],
                 imageConfig: {
                     aspectRatio: aspectRatio as any
-                },
-                safetySettings: SAFETY_SETTINGS
+                }
             }
         }));
 
@@ -496,7 +501,10 @@ ${negativePrompt} pasted-on product, cutout edges, halo, floating object, mismat
     } catch (apiError: any) {
         console.error(`Edit Generation failed:`, apiError);
         const msg = apiError.message?.toLowerCase() || '';
-        if (msg.includes('not found') || msg.includes('unavailable') || msg.includes('permission denied')) {
+        if (msg.includes('unavailable') || msg.includes('high demand') || msg.includes('503')) {
+            throw new Error(`Los servidores de Google tienen alta demanda en este momento (Error 503). Por favor, inténtalo de nuevo. Spikes in demand are usually temporary.`);
+        }
+        if (msg.includes('not found') || msg.includes('permission denied') || msg.includes('403') || msg.includes('404')) {
             throw new Error(`Este modelo no está disponible para esta API key o proyecto. Vuelve a Stable.`);
         }
         throw apiError;
